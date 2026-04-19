@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Large source media. Keep the folders, not the raw videos.
+wejscie/*
+!wejscie/.gitkeep
+
+# Generated outputs. Keep the folder, not rendered/transcribed files.
+wyniki/*
+!wyniki/.gitkeep
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
