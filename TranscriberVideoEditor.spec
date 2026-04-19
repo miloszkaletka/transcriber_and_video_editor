@@ -7,7 +7,10 @@ a = Analysis(
     ['app_gui.py'],
     pathex=[],
     binaries=[],
-    datas=collect_data_files('faster_whisper', includes=['assets/*']),
+    datas=(
+        collect_data_files('faster_whisper', includes=['assets/*'])
+        + collect_data_files('imageio_ffmpeg', includes=['binaries/*'])
+    ),
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

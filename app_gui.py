@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import queue
 import sys
+import subprocess
 import threading
 import time
 import tkinter as tk
@@ -10,8 +11,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from faster_whisper import WhisperModel
+from imageio_ffmpeg import get_ffmpeg_exe
 
-from edytuj_przedzialy import render_intervals
 from transkrybuj_takeami import detect_takes, load_audio
 
 
@@ -134,16 +135,67 @@ def render_edited_video(input_path: Path, output_dir: Path, log) -> None:
         return
 
     output_video = output_dir / f"{input_path.stem}_EDIT_1080p.mp4"
-    render_intervals(
-        input_path=input_path,
-        output_path=output_video,
-        intervals=intervals,
-        width=1920,
-        height=1080,
-        crf="21",
-        preset="veryfast",
-    )
+    render_intervals_with_ffmpeg(input_path, output_video, intervals)
     log(f"Zapisano MP4 po cięciach: {output_video.name}")
+
+
+def render_intervals_with_ffmpeg(
+    input_path: Path,
+    output_path: Path,
+    intervals: list[tuple[float, float]],
+) -> None:
+    filter_parts = []
+    concat_inputs = []
+
+    for index, (start, end) in enumerate(intervals):
+        filter_parts.append(
+            f"[0:v]trim=start={start:.3f}:end={end:.3f},"
+            f"setpts=PTS-STARTPTS,scale=1920:1080,setsar=1[v{index}]"
+        )
+        filter_parts.append(
+            f"[0:a]atrim=start={start:.3f}:end={end:.3f},"
+            f"asetpts=PTS-STARTPTS[a{index}]"
+        )
+        concat_inputs.append(f"[v{index}][a{index}]")
+
+    filter_parts.append(
+        "".join(concat_inputs) + f"concat=n={len(intervals)}:v=1:a=1[vout][aout]"
+    )
+    filter_complex = ";".join(filter_parts)
+
+    command = [
+        get_ffmpeg_exe(),
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(input_path),
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[vout]",
+        "-map",
+        "[aout]",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "21",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+
+    completed = subprocess.run(command, capture_output=True, text=True)
+    if completed.returncode != 0:
+        error = (completed.stderr or completed.stdout or "Nieznany błąd FFmpeg.").strip()
+        raise RuntimeError(f"FFmpeg nie wyrenderował MP4:\n{error}")
 
 
 def format_duration(seconds: float) -> str:
