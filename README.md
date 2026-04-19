@@ -25,6 +25,36 @@ python -m pip install -r requirements.txt
 
 Pierwsze uruchomienie danego modelu Whisper moze pobrac model z internetu.
 
+## Aplikacja Windows
+
+Lokalnie mozna uruchomic okno programu:
+
+```powershell
+python app_gui.py
+```
+
+W aplikacji:
+
+1. Kliknij `Wybierz filmy`.
+2. Zaznacz jeden lub kilka plikow.
+3. Wybierz folder wynikow.
+4. Kliknij `Start`.
+
+Program przetwarza pliki po kolei. W oknie znajduje sie notka:
+`Program powstał dzięki Miłosz Kaletka`.
+
+Budowanie pliku `.exe`:
+
+```powershell
+python -m PyInstaller --name TranscriberVideoEditor --onefile --windowed app_gui.py
+```
+
+Gotowy plik pojawi sie w:
+
+```text
+dist/TranscriberVideoEditor.exe
+```
+
 ## Transkrypcja podstawowa
 
 ```powershell

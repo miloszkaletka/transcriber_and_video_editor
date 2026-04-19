@@ -18,6 +18,7 @@ ENV/
 build/
 dist/
 *.egg-info/
+*.exe
 
 # Large source media. Keep the folders, not the raw videos.
 wejscie/*

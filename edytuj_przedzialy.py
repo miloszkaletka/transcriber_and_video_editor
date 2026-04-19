@@ -29,28 +29,18 @@ def is_kept(time_seconds: float | None, intervals: list[tuple[float, float]]) ->
     return any(start <= time_seconds <= end for start, end in intervals)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Renderuje MP4 z wybranych przedziałów czasu.")
-    parser.add_argument("input", help="Plik wejściowy MP4")
-    parser.add_argument("output", help="Plik wynikowy MP4")
-    parser.add_argument(
-        "--keep",
-        action="append",
-        required=True,
-        type=parse_interval,
-        help="Przedział do zostawienia w sekundach, np. --keep 25.1-43.9. Można podać wiele razy.",
-    )
-    parser.add_argument("--crf", default="20", help="Jakość H.264. Niżej = lepiej/większy plik.")
-    parser.add_argument("--preset", default="veryfast", help="Preset H.264, np. veryfast, medium.")
-    parser.add_argument("--width", type=int, default=None, help="Szerokość wyniku, np. 1920.")
-    parser.add_argument("--height", type=int, default=None, help="Wysokość wyniku, np. 1080.")
-    args = parser.parse_args()
-
-    input_path = Path(args.input).resolve()
-    output_path = Path(args.output).resolve()
+def render_intervals(
+    input_path: Path,
+    output_path: Path,
+    intervals: list[tuple[float, float]],
+    width: int | None = None,
+    height: int | None = None,
+    crf: str = "21",
+    preset: str = "veryfast",
+) -> tuple[int, int]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    intervals = sorted(args.keep)
+    intervals = sorted(intervals)
     input_container = av.open(str(input_path))
     output_container = av.open(str(output_path), mode="w")
 
@@ -61,10 +51,10 @@ def main() -> int:
     fps = video_in.average_rate or video_in.base_rate or 30
     video_time_base = Fraction(fps.denominator, fps.numerator) if hasattr(fps, "denominator") else Fraction(1, int(fps))
     video_out = output_container.add_stream("libx264", rate=fps)
-    video_out.width = args.width or video_in.codec_context.width
-    video_out.height = args.height or video_in.codec_context.height
+    video_out.width = width or video_in.codec_context.width
+    video_out.height = height or video_in.codec_context.height
     video_out.pix_fmt = "yuv420p"
-    video_out.options = {"crf": str(args.crf), "preset": args.preset, "movflags": "+faststart"}
+    video_out.options = {"crf": str(crf), "preset": preset, "movflags": "+faststart"}
 
     audio_out = None
     audio_resampler = None
@@ -75,7 +65,6 @@ def main() -> int:
         audio_out.layout = "stereo"
         audio_resampler = AudioResampler(format="fltp", layout="stereo", rate=audio_rate)
     else:
-        audio_rate = 0
         audio_time_base = None
 
     kept_video_frames = 0
@@ -91,8 +80,8 @@ def main() -> int:
             continue
 
         if isinstance(frame, av.VideoFrame):
-            if args.width and args.height:
-                frame = frame.reformat(width=args.width, height=args.height, format="yuv420p")
+            if width and height:
+                frame = frame.reformat(width=width, height=height, format="yuv420p")
             frame.pts = kept_video_frames
             frame.time_base = video_time_base
             for packet in video_out.encode(frame):
@@ -116,6 +105,37 @@ def main() -> int:
 
     output_container.close()
     input_container.close()
+    return kept_video_frames, kept_audio_frames
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Renderuje MP4 z wybranych przedziałów czasu.")
+    parser.add_argument("input", help="Plik wejściowy MP4")
+    parser.add_argument("output", help="Plik wynikowy MP4")
+    parser.add_argument(
+        "--keep",
+        action="append",
+        required=True,
+        type=parse_interval,
+        help="Przedział do zostawienia w sekundach, np. --keep 25.1-43.9. Można podać wiele razy.",
+    )
+    parser.add_argument("--crf", default="20", help="Jakość H.264. Niżej = lepiej/większy plik.")
+    parser.add_argument("--preset", default="veryfast", help="Preset H.264, np. veryfast, medium.")
+    parser.add_argument("--width", type=int, default=None, help="Szerokość wyniku, np. 1920.")
+    parser.add_argument("--height", type=int, default=None, help="Wysokość wyniku, np. 1080.")
+    args = parser.parse_args()
+
+    input_path = Path(args.input).resolve()
+    output_path = Path(args.output).resolve()
+    kept_video_frames, kept_audio_frames = render_intervals(
+        input_path=input_path,
+        output_path=output_path,
+        intervals=args.keep,
+        width=args.width,
+        height=args.height,
+        crf=args.crf,
+        preset=args.preset,
+    )
 
     print(f"Zapisano: {output_path}")
     print(f"Klatki wideo: {kept_video_frames}")
