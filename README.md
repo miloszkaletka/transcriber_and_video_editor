@@ -41,18 +41,21 @@ W aplikacji:
 4. Kliknij `Start`.
 
 Program przetwarza pliki po kolei. W oknie znajduje sie notka:
-`Program powstał dzięki Miłosz Kaletka`.
+`Autor Miłosz Kaletka`.
 
-Aplikacja okienkowa transkrybuje kazdy wybrany film jako jeden plik i zapisuje:
+Aplikacja okienkowa uzywa stale modelu `medium`, pokazuje pasek postepu
+oraz orientacyjny czas oczekiwania. Kazdy wybrany film transkrybuje jako jeden
+plik i zapisuje:
 
 ```text
 film.txt
 film.srt
 film.json
+film_EDIT_1080p.mp4
 ```
 
-Opcje montazu dynamicznego i transkrypcji po take'ach zostaja dostepne jako
-osobne skrypty dla bardziej zaawansowanej pracy.
+Plik `film_EDIT_1080p.mp4` powstaje z automatycznych ciec ciszy. Same przedzialy
+ciec nie sa zapisywane jako osobny plik w GUI.
 
 Budowanie pliku `.exe`:
 

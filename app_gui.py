@@ -4,19 +4,25 @@ import json
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from faster_whisper import WhisperModel
 
+from edytuj_przedzialy import render_intervals
+from transkrybuj_takeami import detect_takes, load_audio
+
 
 APP_NAME = "TranscriberVideoEditor"
-CREDIT = "Program powstał dzięki Miłosz Kaletka"
+CREDIT = "Autor Miłosz Kaletka"
 MEDIA_TYPES = [
     ("Pliki audio/wideo", "*.mp4 *.mov *.mkv *.avi *.webm *.mp3 *.wav *.m4a"),
     ("Wszystkie pliki", "*.*"),
 ]
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
+MODEL_NAME = "medium"
 
 
 def app_base_dir() -> Path:
@@ -102,6 +108,55 @@ def transcribe_whole_file(input_path: Path, output_dir: Path, model: WhisperMode
     log(f"Zapisano: {txt_path.name}, {srt_path.name}, {json_path.name}")
 
 
+def detect_edit_intervals(input_path: Path, log) -> list[tuple[float, float]]:
+    sample_rate = 16000
+    log("Wykrywam cięcia ciszy do MP4...")
+    audio = load_audio(input_path, sample_rate=sample_rate)
+    intervals = detect_takes(
+        audio,
+        sample_rate=sample_rate,
+        window_seconds=0.08,
+        split_pause=0.50,
+        padding=0.18,
+        threshold_db=None,
+    )
+    return [(start, end) for start, end in intervals if end - start >= 0.25]
+
+
+def render_edited_video(input_path: Path, output_dir: Path, log) -> None:
+    if input_path.suffix.lower() not in VIDEO_EXTENSIONS:
+        log("Pomijam MP4: wybrany plik nie wygląda jak wideo.")
+        return
+
+    intervals = detect_edit_intervals(input_path, log)
+    if not intervals:
+        log("Nie wykryłem fragmentów mowy do renderu MP4.")
+        return
+
+    output_video = output_dir / f"{input_path.stem}_EDIT_1080p.mp4"
+    render_intervals(
+        input_path=input_path,
+        output_path=output_video,
+        intervals=intervals,
+        width=1920,
+        height=1080,
+        crf="21",
+        preset="veryfast",
+    )
+    log(f"Zapisano MP4 po cięciach: {output_video.name}")
+
+
+def format_duration(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    minutes, secs = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m {secs}s"
+    if minutes:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
+
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -111,10 +166,12 @@ class App(tk.Tk):
 
         self.files: list[Path] = []
         self.output_dir = tk.StringVar(value=str(app_base_dir() / "wyniki"))
-        self.model_name = tk.StringVar(value="medium")
         self.status = tk.StringVar(value="Gotowy.")
-        self.log_queue: queue.Queue[str] = queue.Queue()
+        self.progress_text = tk.StringVar(value="Postęp: 0/0")
+        self.progress_value = tk.DoubleVar(value=0)
+        self.log_queue: queue.Queue[object] = queue.Queue()
         self.worker: threading.Thread | None = None
+        self.started_at = 0.0
 
         self.create_widgets()
         self.after(150, self.consume_logs)
@@ -136,12 +193,11 @@ class App(tk.Tk):
         options = ttk.Frame(frame)
         options.pack(fill=tk.X, pady=10)
 
-        ttk.Label(options, text="Model Whisper:").pack(side=tk.LEFT)
-        ttk.OptionMenu(options, self.model_name, self.model_name.get(), "small", "medium", "large-v3").pack(
-            side=tk.LEFT,
-            padx=(6, 18),
-        )
-        ttk.Label(options, text="Program transkrybuje każdy film jako jeden plik.").pack(side=tk.LEFT)
+        ttk.Label(options, text=f"Model Whisper: {MODEL_NAME}").pack(side=tk.LEFT)
+        ttk.Label(
+            options,
+            text="Transkrypcja jako jeden plik + MP4 po automatycznych cięciach.",
+        ).pack(side=tk.LEFT, padx=(18, 0))
 
         ttk.Label(frame, text="Wybrane pliki:").pack(anchor=tk.W)
         self.file_list = tk.Listbox(frame, height=8)
@@ -152,6 +208,15 @@ class App(tk.Tk):
 
         self.start_button = ttk.Button(frame, text="Start", command=self.start)
         self.start_button.pack(anchor=tk.W)
+
+        self.progress = ttk.Progressbar(
+            frame,
+            variable=self.progress_value,
+            maximum=100,
+            mode="determinate",
+        )
+        self.progress.pack(fill=tk.X, pady=(10, 2))
+        ttk.Label(frame, textvariable=self.progress_text).pack(anchor=tk.W)
 
         ttk.Label(frame, textvariable=self.status).pack(anchor=tk.W, pady=(10, 2))
 
@@ -178,14 +243,36 @@ class App(tk.Tk):
     def log(self, message: str) -> None:
         self.log_queue.put(message)
 
+    def set_progress(self, done: int, total: int, current_name: str | None = None) -> None:
+        self.log_queue.put(("progress", done, total, current_name, time.time()))
+
     def consume_logs(self) -> None:
         while True:
             try:
-                message = self.log_queue.get_nowait()
+                item = self.log_queue.get_nowait()
             except queue.Empty:
                 break
-            self.log_box.insert(tk.END, message + "\n")
-            self.log_box.see(tk.END)
+            if isinstance(item, tuple) and item and item[0] == "progress":
+                _, done, total, current_name, now = item
+                percent = (done / total * 100) if total else 0
+                elapsed = now - self.started_at if self.started_at else 0
+                if done > 0 and total > done:
+                    avg = elapsed / done
+                    eta = avg * (total - done)
+                    eta_text = format_duration(eta)
+                elif done == total and total:
+                    eta_text = "0s"
+                else:
+                    eta_text = "liczę po pierwszym pliku"
+
+                self.progress_value.set(percent)
+                current = f" | Teraz: {current_name}" if current_name else ""
+                self.progress_text.set(
+                    f"Postęp: {done}/{total} | Minęło: {format_duration(elapsed)} | ETA: {eta_text}{current}"
+                )
+            else:
+                self.log_box.insert(tk.END, str(item) + "\n")
+                self.log_box.see(tk.END)
         self.after(150, self.consume_logs)
 
     def start(self) -> None:
@@ -197,6 +284,9 @@ class App(tk.Tk):
 
         self.start_button.configure(state=tk.DISABLED)
         self.status.set("Przetwarzanie...")
+        self.progress_value.set(0)
+        self.progress_text.set(f"Postęp: 0/{len(self.files)}")
+        self.started_at = time.time()
         self.worker = threading.Thread(target=self.process_files, daemon=True)
         self.worker.start()
 
@@ -205,13 +295,16 @@ class App(tk.Tk):
             output_dir = Path(self.output_dir.get()).expanduser().resolve()
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            self.log(f"Ładuję model: {self.model_name.get()}")
-            model = WhisperModel(self.model_name.get(), device="cpu", compute_type="int8")
+            self.log(f"Ładuję model: {MODEL_NAME}")
+            model = WhisperModel(MODEL_NAME, device="cpu", compute_type="int8")
 
             for index, input_path in enumerate(self.files, start=1):
+                self.set_progress(index - 1, len(self.files), input_path.name)
                 self.log("")
                 self.log(f"[{index}/{len(self.files)}] {input_path.name}")
                 transcribe_whole_file(input_path, output_dir, model, self.log)
+                render_edited_video(input_path, output_dir, self.log)
+                self.set_progress(index, len(self.files))
 
             self.status.set("Gotowe.")
             self.log("")
