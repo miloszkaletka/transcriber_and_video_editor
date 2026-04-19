@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import queue
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -16,6 +17,12 @@ MEDIA_TYPES = [
     ("Pliki audio/wideo", "*.mp4 *.mov *.mkv *.avi *.webm *.mp3 *.wav *.m4a"),
     ("Wszystkie pliki", "*.*"),
 ]
+
+
+def app_base_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
 
 
 def format_timestamp(seconds: float) -> str:
@@ -46,7 +53,7 @@ def transcribe_whole_file(input_path: Path, output_dir: Path, model: WhisperMode
         str(input_path),
         language="pl",
         beam_size=5,
-        vad_filter=True,
+        vad_filter=False,
         word_timestamps=True,
         condition_on_previous_text=False,
     )
@@ -103,7 +110,7 @@ class App(tk.Tk):
         self.minsize(720, 520)
 
         self.files: list[Path] = []
-        self.output_dir = tk.StringVar(value=str(Path.cwd() / "wyniki"))
+        self.output_dir = tk.StringVar(value=str(app_base_dir() / "wyniki"))
         self.model_name = tk.StringVar(value="medium")
         self.status = tk.StringVar(value="Gotowy.")
         self.log_queue: queue.Queue[str] = queue.Queue()

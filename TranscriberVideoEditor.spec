@@ -1,11 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
 
 a = Analysis(
     ['app_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=collect_data_files('faster_whisper', includes=['assets/*']),
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
