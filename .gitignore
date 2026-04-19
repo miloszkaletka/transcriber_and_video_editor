@@ -1,8 +1,23 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.env
+.envrc
 .venv/
+env/
 venv/
+ENV/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
 
 # Large source media. Keep the folders, not the raw videos.
 wejscie/*

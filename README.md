@@ -1,4 +1,4 @@
-# Polski transkryber i montaz dynamiczny
+# transcriber_and_video_editor
 
 Lokalny zestaw skryptow do pracy z polskim komentarzem w filmach:
 
