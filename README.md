@@ -3,7 +3,7 @@
 Lokalny zestaw skryptow do pracy z polskim komentarzem w filmach:
 
 - transkrypcja audio/wideo do `.txt`, `.srt` i `.json`
-- transkrypcja po krotkich take'ach wykrytych z pauz
+- transkrypcja po krotkich take'ach wykrytych z pauz, jesli uruchamiasz skrypt recznie
 - wykrywanie fragmentow mowy i usuwanie ciszy
 - renderowanie dynamicznej wersji filmu w 1080p
 
@@ -42,6 +42,17 @@ W aplikacji:
 
 Program przetwarza pliki po kolei. W oknie znajduje sie notka:
 `Program powstał dzięki Miłosz Kaletka`.
+
+Aplikacja okienkowa transkrybuje kazdy wybrany film jako jeden plik i zapisuje:
+
+```text
+film.txt
+film.srt
+film.json
+```
+
+Opcje montazu dynamicznego i transkrypcji po take'ach zostaja dostepne jako
+osobne skrypty dla bardziej zaawansowanej pracy.
 
 Budowanie pliku `.exe`:
 
